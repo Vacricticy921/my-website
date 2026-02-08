@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Image from 'next/image'
+import ImageModal from './ImageModal'
 
 interface ImageGalleryProps {
   destinationId: number
@@ -22,6 +23,8 @@ export default function ImageGallery({
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(initialImages.length < totalImages)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [currentImageIndex, setCurrentImageIndex] = useState(0)
 
   // 计算总页数
   const totalPages = Math.ceil(totalImages / PAGE_SIZE)
@@ -50,6 +53,31 @@ export default function ImageGallery({
       setLoading(false)
     }
   }, [destinationId, page, loading, hasMore, totalPages])
+
+  // 处理图片点击，打开预览
+  const handleImageClick = (index: number) => {
+    setCurrentImageIndex(index)
+    setModalOpen(true)
+  }
+
+  // 关闭预览
+  const handleCloseModal = () => {
+    setModalOpen(false)
+  }
+
+  // 切换到下一张图片
+  const handleNextImage = () => {
+    if (currentImageIndex < images.length - 1) {
+      setCurrentImageIndex(currentImageIndex + 1)
+    }
+  }
+
+  // 切换到上一张图片
+  const handlePrevImage = () => {
+    if (currentImageIndex > 0) {
+      setCurrentImageIndex(currentImageIndex - 1)
+    }
+  }
 
   // 监听滚动事件，实现下拉加载
   useEffect(() => {
@@ -84,10 +112,24 @@ export default function ImageGallery({
         marginBottom: '2rem',
       }}>
         {images.map((imageSrc, index) => (
-          <div key={index} className="card" style={{
-            overflow: 'hidden',
-            transition: 'transform 0.3s ease',
-          }}>
+          <div
+            key={index}
+            className="card"
+            style={{
+              overflow: 'hidden',
+              transition: 'transform 0.3s ease',
+              cursor: 'pointer',
+            }}
+            onClick={() => handleImageClick(index)}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-4px)'
+              e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow = ''
+            }}
+          >
             <div style={{
               width: '100%',
               height: '200px',
@@ -109,6 +151,14 @@ export default function ImageGallery({
                 margin: 0,
               }}>
                 照片 {index + 1} / {totalImages}
+              </p>
+              <p style={{
+                fontSize: '0.8rem',
+                color: '#999',
+                marginTop: '0.25rem',
+                marginBottom: 0,
+              }}>
+                点击预览大图
               </p>
             </div>
           </div>
@@ -165,6 +215,17 @@ export default function ImageGallery({
           </div>
         )}
       </div>
+
+      {/* 图片预览模态框 */}
+      <ImageModal
+        isOpen={modalOpen}
+        onClose={handleCloseModal}
+        images={images}
+        currentIndex={currentImageIndex}
+        onNext={handleNextImage}
+        onPrev={handlePrevImage}
+        destinationTitle={destinationTitle}
+      />
     </>
   )
 }
