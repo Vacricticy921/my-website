@@ -192,7 +192,7 @@ export default function LifePlanPage() {
                 重要的是保持积极的心态，勇敢面对挑战，在实现个人价值的同时，也为社会创造价值。
               </p>
               <p style={{ fontStyle: 'italic', color: '#64748b' }}>
-                "成功的秘诀在于始终如一地追求目标。"
+                &quot;成功的秘诀在于始终如一地追求目标。&quot;
               </p>
             </div>
           </div>
