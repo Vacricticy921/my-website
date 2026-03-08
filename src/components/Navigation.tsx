@@ -11,6 +11,7 @@ export default function Navigation() {
     { href: '/travel', label: '旅游合集' },
     { href: '/life-plan', label: '人生规划' },
     { href: '/resume', label: '个人简历' },
+    { href: '/notes-review', label: '笔记复习' },
   ]
 
   return (
