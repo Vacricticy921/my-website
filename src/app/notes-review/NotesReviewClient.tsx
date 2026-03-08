@@ -40,6 +40,13 @@ interface NotesReviewSessionProps {
 
 // 复习会话组件，包含原有的复习逻辑
 function NotesReviewSession({ bookData, totalPoints }: NotesReviewSessionProps) {
+  // 调试：输出传入的 props
+  console.log('NotesReviewSession: 渲染开始', {
+    bookDataTitle: bookData?.title,
+    totalPoints,
+    chaptersCount: bookData?.chapters?.length
+  })
+
   // 当前章节索引
   const [currentChapterIndex, setCurrentChapterIndex] = useState(0)
   // 当前笔记索引（在当前章节中）
@@ -48,6 +55,71 @@ function NotesReviewSession({ bookData, totalPoints }: NotesReviewSessionProps) 
   const [reviewedCount, setReviewedCount] = useState(0)
   // 撒花动效显示状态
   const [showConfetti, setShowConfetti] = useState(false)
+
+  // 从 localStorage 加载保存的进度
+  useEffect(() => {
+    if (!bookData || !bookData.title) {
+      console.log('加载进度: bookData 或 bookData.title 为空', { bookData })
+      return
+    }
+
+    // bookData 可能已变化，重新加载进度
+
+    const storageKey = `notes-review-progress-${bookData.title}`
+    console.log('加载进度: 尝试加载键名', storageKey)
+    const savedProgress = localStorage.getItem(storageKey)
+    console.log('加载进度: 获取到的数据', savedProgress)
+
+    if (savedProgress) {
+      try {
+        const progress = JSON.parse(savedProgress)
+        console.log('加载进度: 解析后的进度数据', progress)
+
+        // 验证保存的数据结构
+        if (
+          typeof progress === 'object' &&
+          typeof progress.currentChapterIndex === 'number' &&
+          typeof progress.currentPointIndex === 'number' &&
+          typeof progress.reviewedCount === 'number'
+        ) {
+          // 检查索引是否有效
+          const validChapterIndex = Math.min(
+            Math.max(0, progress.currentChapterIndex),
+            bookData.chapters.length - 1
+          )
+          const validPointIndex = Math.min(
+            Math.max(0, progress.currentPointIndex),
+            (bookData.chapters[validChapterIndex]?.points || []).length - 1
+          )
+          const validReviewedCount = Math.min(
+            Math.max(0, progress.reviewedCount),
+            totalPoints
+          )
+
+          console.log('加载进度: 验证后的索引', {
+            validChapterIndex,
+            validPointIndex,
+            validReviewedCount,
+            totalPoints
+          })
+
+          setCurrentChapterIndex(validChapterIndex)
+          setCurrentPointIndex(validPointIndex)
+          setReviewedCount(validReviewedCount)
+
+          console.log('加载进度: 状态已更新')
+        } else {
+          console.log('加载进度: 进度数据结构无效', progress)
+        }
+      } catch (error) {
+        console.error('加载保存的进度失败:', error)
+      }
+    } else {
+      console.log('加载进度: 没有找到保存的进度')
+    }
+
+    // 进度加载完成
+  }, [bookData, totalPoints])
 
   // 撒花动效自动隐藏
   useEffect(() => {
@@ -58,6 +130,27 @@ function NotesReviewSession({ bookData, totalPoints }: NotesReviewSessionProps) 
       return () => clearTimeout(timer)
     }
   }, [showConfetti])
+
+  // 保存进度到 localStorage 的辅助函数
+  const saveProgress = (chapterIndex: number, pointIndex: number, count: number) => {
+    if (!bookData || !bookData.title) {
+      console.log('保存进度: bookData 或 bookData.title 为空')
+      return
+    }
+
+    const storageKey = `notes-review-progress-${bookData.title}`
+    const progress = {
+      currentChapterIndex: chapterIndex,
+      currentPointIndex: pointIndex,
+      reviewedCount: count,
+      lastUpdated: new Date().toISOString()
+    }
+
+    console.log('保存进度: 保存键名', storageKey)
+    console.log('保存进度: 进度数据', progress)
+
+    localStorage.setItem(storageKey, JSON.stringify(progress))
+  }
 
   // 保护性检查
   if (!bookData || !bookData.chapters || bookData.chapters.length === 0) {
@@ -98,38 +191,61 @@ function NotesReviewSession({ bookData, totalPoints }: NotesReviewSessionProps) 
 
   // 处理"下一条/下一章"按钮点击
   const handleNext = () => {
-    // 增加已复习计数（当前笔记）
-    setReviewedCount(prev => prev + 1)
+    let newChapterIndex = currentChapterIndex
+    let newPointIndex = currentPointIndex
+    let newReviewedCount = reviewedCount
+    let showConfettiFlag = false
+
+    // 增加已复习计数（当前笔记），但不超过总笔记数
+    if (reviewedCount < totalPoints) {
+      newReviewedCount = reviewedCount + 1
+    }
 
     // 如果当前章节还有下一条笔记
     if (currentPointIndex < currentChapterPoints.length - 1) {
-      setCurrentPointIndex(prev => prev + 1)
+      newPointIndex = currentPointIndex + 1
     } else {
       // 当前章节已完成，切换到下一章
       if (currentChapterIndex < bookData.chapters.length - 1) {
-        setCurrentChapterIndex(prev => prev + 1)
-        setCurrentPointIndex(0)
-        setShowConfetti(true) // 显示撒花动效
+        newChapterIndex = currentChapterIndex + 1
+        newPointIndex = 0
+        showConfettiFlag = true // 显示撒花动效
       } else {
         // 已经是最后一章的最后一个笔记，可以回到开始或显示完成信息
         // 这里我们回到第一章第一条笔记，重新开始复习
-        setCurrentChapterIndex(0)
-        setCurrentPointIndex(0)
-        // 重置已复习计数？不，我们保留已复习计数
+        newChapterIndex = 0
+        newPointIndex = 0
+        // 重新开始时重置已复习计数，以便重新计数
+        newReviewedCount = 0
       }
     }
+
+    // 更新状态
+    setCurrentChapterIndex(newChapterIndex)
+    setCurrentPointIndex(newPointIndex)
+    setReviewedCount(newReviewedCount)
+    if (showConfettiFlag) {
+      setShowConfetti(true)
+    }
+
+    // 直接保存进度到 localStorage
+    saveProgress(newChapterIndex, newPointIndex, newReviewedCount)
   }
 
   // 处理"上一条/上一章"按钮点击
   const handlePrev = () => {
+    let newChapterIndex = currentChapterIndex
+    let newPointIndex = currentPointIndex
+    let newReviewedCount = reviewedCount
+
     // 减少已复习计数（如果是从已复习状态回退）
     if (reviewedCount > 0) {
-      setReviewedCount(prev => prev - 1)
+      newReviewedCount = reviewedCount - 1
     }
 
     // 如果当前章节还有上一条笔记
     if (currentPointIndex > 0) {
-      setCurrentPointIndex(prev => prev - 1)
+      newPointIndex = currentPointIndex - 1
     } else {
       // 当前章节已到第一条笔记，切换到上一章
       if (currentChapterIndex > 0) {
@@ -138,8 +254,8 @@ function NotesReviewSession({ bookData, totalPoints }: NotesReviewSessionProps) 
         const prevChapterPoints = prevChapter.points || []
         const lastPointIndex = Math.max(0, prevChapterPoints.length - 1)
 
-        setCurrentChapterIndex(prevChapterIndex)
-        setCurrentPointIndex(lastPointIndex)
+        newChapterIndex = prevChapterIndex
+        newPointIndex = lastPointIndex
       } else {
         // 已经是第一章第一条笔记，可以不做操作或循环到最后
         // 这里选择循环到最后：跳到最后一章的最后一条笔记
@@ -148,10 +264,18 @@ function NotesReviewSession({ bookData, totalPoints }: NotesReviewSessionProps) 
         const lastChapterPoints = lastChapter.points || []
         const lastPointIndex = Math.max(0, lastChapterPoints.length - 1)
 
-        setCurrentChapterIndex(lastChapterIndex)
-        setCurrentPointIndex(lastPointIndex)
+        newChapterIndex = lastChapterIndex
+        newPointIndex = lastPointIndex
       }
     }
+
+    // 更新状态
+    setCurrentChapterIndex(newChapterIndex)
+    setCurrentPointIndex(newPointIndex)
+    setReviewedCount(newReviewedCount)
+
+    // 直接保存进度到 localStorage
+    saveProgress(newChapterIndex, newPointIndex, newReviewedCount)
   }
 
   // 获取"下一条/下一章"按钮文本
@@ -271,33 +395,69 @@ function NotesReviewSession({ bookData, totalPoints }: NotesReviewSessionProps) 
             transition: 'width 0.3s ease'
           }} />
         </div>
+
+        {/* 重置进度按钮 */}
+        <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => {
+              if (window.confirm('确定要重置复习进度吗？这将清除当前书籍的所有复习记录。')) {
+                // 重置状态
+                setCurrentChapterIndex(0)
+                setCurrentPointIndex(0)
+                setReviewedCount(0)
+
+                // 从 localStorage 删除保存的进度
+                if (bookData && bookData.title) {
+                  const storageKey = `notes-review-progress-${bookData.title}`
+                  localStorage.removeItem(storageKey)
+                  console.log('重置进度: 已删除键名', storageKey)
+                }
+              }
+            }}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.85rem',
+              backgroundColor: 'transparent',
+              color: '#ef4444',
+              border: '1px solid #ef4444',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#fef2f2'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent'
+            }}
+          >
+            重置进度
+          </button>
+        </div>
       </div>
 
       {/* 章节和步骤条 */}
       <div className="card" style={{ marginBottom: '2rem' }}>
-        <h3 style={{ marginBottom: '1.5rem' }}>当前章节：{currentChapter.title || '无标题章节'}</h3>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '1.5rem'
+        }}>
+          <h3 style={{ margin: 0 }}>当前章节：{currentChapter.title || '无标题章节'}</h3>
+          <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
+            第 {currentChapterIndex + 1} / {bookData.chapters.length} 章
+          </div>
+        </div>
 
         {/* 步骤条 */}
         <div style={{ marginBottom: '2rem' }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '0.5rem'
-          }}>
-            <span style={{ fontSize: '0.9rem', color: '#64748b' }}>
-              当前进度：{currentPointIndex + 1} / {currentChapterPoints.length}
-            </span>
-            <span style={{ fontSize: '0.9rem', color: '#64748b' }}>
-              第 {currentChapterIndex + 1} / {bookData.chapters.length} 章
-            </span>
-          </div>
-
           {/* 步骤条可视化 */}
           <div style={{
             display: 'flex',
             gap: '4px',
-            marginBottom: '1rem'
+            marginBottom: '1rem',
+            position: 'relative'
           }}>
             {currentChapterPoints.map((_, index) => (
               <div
@@ -312,6 +472,16 @@ function NotesReviewSession({ bookData, totalPoints }: NotesReviewSessionProps) 
                 title={`笔记 ${index + 1}`}
               />
             ))}
+            {/* 当前进度显示在步骤条右上方 */}
+            <div style={{
+              position: 'absolute',
+              top: '-1.5rem',
+              right: '0',
+              fontSize: '0.9rem',
+              color: '#64748b'
+            }}>
+              当前进度：{currentPointIndex + 1} / {currentChapterPoints.length}
+            </div>
           </div>
 
           {/* 步骤标签 */}
@@ -332,8 +502,44 @@ function NotesReviewSession({ bookData, totalPoints }: NotesReviewSessionProps) 
           borderRadius: '8px',
           padding: '2rem',
           marginBottom: '2rem',
-          border: '1px solid #e2e8f0'
+          border: '1px solid #e2e8f0',
+          position: 'relative'
         }}>
+          {/* 右上角操作按钮 */}
+          <div style={{
+            position: 'absolute',
+            top: '1rem',
+            right: '1rem',
+            display: 'flex',
+            gap: '0.5rem'
+          }}>
+            <button
+              onClick={handlePrev}
+              className="btn"
+              style={{
+                padding: '0.5rem 1rem',
+                fontSize: '0.9rem',
+                fontWeight: '600',
+                backgroundColor: '#f1f5f9',
+                color: '#64748b',
+                border: '1px solid #cbd5e1'
+              }}
+            >
+              {getPrevButtonText()}
+            </button>
+            <button
+              onClick={handleNext}
+              className="btn"
+              style={{
+                padding: '0.5rem 1.5rem',
+                fontSize: '0.9rem',
+                fontWeight: '600'
+              }}
+            >
+              {getButtonText()}
+            </button>
+          </div>
+
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -376,34 +582,6 @@ function NotesReviewSession({ bookData, totalPoints }: NotesReviewSessionProps) 
           </div>
         </div>
 
-        {/* 导航按钮 */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
-          <button
-            onClick={handlePrev}
-            className="btn"
-            style={{
-              padding: '1rem 2rem',
-              fontSize: '1.1rem',
-              fontWeight: '600',
-              backgroundColor: '#f1f5f9',
-              color: '#64748b',
-              border: '1px solid #cbd5e1'
-            }}
-          >
-            {getPrevButtonText()}
-          </button>
-          <button
-            onClick={handleNext}
-            className="btn"
-            style={{
-              padding: '1rem 3rem',
-              fontSize: '1.1rem',
-              fontWeight: '600'
-            }}
-          >
-            {getButtonText()}
-          </button>
-        </div>
       </div>
 
       {/* 章节列表 */}
@@ -466,6 +644,106 @@ function NotesReviewSession({ bookData, totalPoints }: NotesReviewSessionProps) 
   )
 }
 
+// 书籍卡片组件，处理客户端进度显示
+interface BookCardProps {
+  book: BookInfo
+  onClick: () => void
+}
+
+function BookCard({ book, onClick }: BookCardProps) {
+  // 状态管理进度百分比，初始为 null 表示未加载
+  const [progressPercentage, setProgressPercentage] = useState<number | null>(null)
+  const [reviewedCount, setReviewedCount] = useState<number | null>(null)
+
+  useEffect(() => {
+    // 只在客户端执行
+    const storageKey = `notes-review-progress-${book.title}`
+    const savedProgress = localStorage.getItem(storageKey)
+    if (savedProgress) {
+      try {
+        const progress = JSON.parse(savedProgress)
+        if (progress && typeof progress.reviewedCount === 'number') {
+          const reviewed = Math.min(progress.reviewedCount, book.totalPoints)
+          const percentage = book.totalPoints > 0 ? Math.round((reviewed / book.totalPoints) * 100) : 0
+          setReviewedCount(reviewed)
+          setProgressPercentage(percentage)
+        }
+      } catch (error) {
+        console.error('解析进度数据失败:', error)
+      }
+    }
+  }, [book.title, book.totalPoints])
+
+  return (
+    <div
+      className="card"
+      style={{
+        cursor: 'pointer',
+        transition: 'all 0.3s ease',
+        border: '2px solid #e2e8f0'
+      }}
+      onClick={onClick}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = 'translateY(-2px)'
+        e.currentTarget.style.borderColor = '#0070f3'
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'translateY(0)'
+        e.currentTarget.style.borderColor = '#e2e8f0'
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h4 style={{ marginBottom: '0.5rem' }}>{book.title}</h4>
+          <p style={{ color: '#64748b', marginBottom: '0.5rem' }}>
+            作者：{book.author}
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.9rem' }}>
+            <span style={{ color: '#64748b' }}>
+              📚 {book.chaptersCount} 章
+            </span>
+            <span style={{ color: '#64748b' }}>
+              📝 {book.totalPoints} 条笔记
+            </span>
+          </div>
+          {/* 复习进度条 - 只在客户端加载后显示 */}
+          {progressPercentage !== null && reviewedCount !== null && (
+            <div style={{ marginTop: '0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>复习进度</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#10b981' }}>{progressPercentage}%</span>
+              </div>
+              <div style={{
+                height: '6px',
+                backgroundColor: '#e2e8f0',
+                borderRadius: '3px',
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  width: `${progressPercentage}%`,
+                  height: '100%',
+                  backgroundColor: '#10b981',
+                  borderRadius: '3px',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.25rem' }}>
+                已复习 {reviewedCount} / {book.totalPoints} 条笔记
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{
+          fontSize: '1.5rem',
+          color: '#0070f3'
+        }}>
+          →
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // 主组件
 export default function NotesReviewClient({ books }: NotesReviewClientProps) {
   // 选中的书籍索引，null 表示未选择
@@ -492,47 +770,11 @@ export default function NotesReviewClient({ books }: NotesReviewClientProps) {
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {books.map((book, index) => (
-              <div
+              <BookCard
                 key={book.filename}
-                className="card"
-                style={{
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  border: '2px solid #e2e8f0'
-                }}
+                book={book}
                 onClick={() => setSelectedBookIndex(index)}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-2px)'
-                  e.currentTarget.style.borderColor = '#0070f3'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)'
-                  e.currentTarget.style.borderColor = '#e2e8f0'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h4 style={{ marginBottom: '0.5rem' }}>{book.title}</h4>
-                    <p style={{ color: '#64748b', marginBottom: '0.5rem' }}>
-                      作者：{book.author}
-                    </p>
-                    <div style={{ display: 'flex', gap: '1rem', fontSize: '0.9rem' }}>
-                      <span style={{ color: '#64748b' }}>
-                        📚 {book.chaptersCount} 章
-                      </span>
-                      <span style={{ color: '#64748b' }}>
-                        📝 {book.totalPoints} 条笔记
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{
-                    fontSize: '1.5rem',
-                    color: '#0070f3'
-                  }}>
-                    →
-                  </div>
-                </div>
-              </div>
+              />
             ))}
           </div>
         </div>
